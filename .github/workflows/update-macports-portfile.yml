@@ -1,0 +1,205 @@
+# .github/workflows/update-macports-portfile.yml
+#
+# Polls for new cloudflare-speed-cli releases and opens a PR against your
+# macports-ports fork to update the Portfile when a new version is found.
+#
+# Required repository secrets:
+#   MACPORTS_FORK_TOKEN  – a GitHub PAT with `repo` scope on your
+#                          macports-ports fork (push branch + open PR).
+#                           Requires:
+#                             - Contents — Read and write (to push the branch)
+#                             - Pull requests — Read and write (to open the PR)
+#
+# Required repository variables (Settings → Variables → Actions):
+#   MACPORTS_FORK_REPO   – your fork, e.g. "snerpton/macports-ports"
+#   PORTFILE_PATH        – path inside the fork, e.g. "net/cloudflare-speed-cli/Portfile"
+#
+# Companion scripts (must be committed alongside this file):
+#   .github/scripts/gen_cargo_crates.py
+#   .github/scripts/update_portfile.py
+
+name: Update MacPorts Portfile for cloudflare-speed-cli
+
+on:
+  schedule:
+    # Run once a day at 06:00 UTC
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force update even if version unchanged"
+        required: false
+        default: "false"
+
+jobs:
+  update-portfile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # only reading this repo; writes go to the fork via PAT
+
+    steps:
+      # ------------------------------------------------------------------ #
+      # 1. Check out this repo so the companion scripts are available       #
+      # ------------------------------------------------------------------ #
+      - name: Check out cloudflare-speed-cli repo
+        uses: actions/checkout@v4
+        with:
+          path: source-repo
+
+      # ------------------------------------------------------------------ #
+      # 2. Fetch the latest upstream release                                #
+      # ------------------------------------------------------------------ #
+      - name: Get latest cloudflare-speed-cli release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_JSON=$(gh api repos/kavehtehrani/cloudflare-speed-cli/releases/latest)
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name' | sed 's/^v//')
+          TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "Upstream version: $VERSION (tag: $TAG)"
+
+      # ------------------------------------------------------------------ #
+      # 3. Check out your macports-ports fork                               #
+      # ------------------------------------------------------------------ #
+      - name: Check out macports-ports fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.MACPORTS_FORK_REPO }}
+          token: ${{ secrets.MACPORTS_FORK_TOKEN }}
+          fetch-depth: 1
+          path: macports-ports
+
+      # ------------------------------------------------------------------ #
+      # 4. Compare versions – skip if already up-to-date                   #
+      # ------------------------------------------------------------------ #
+      - name: Check whether update is needed
+        id: check
+        run: |
+          PORTFILE="macports-ports/${{ vars.PORTFILE_PATH }}"
+          CURRENT=$(grep -E '^github\.setup\s' "$PORTFILE" | awk '{print $4}')
+          UPSTREAM="${{ steps.upstream.outputs.version }}"
+          echo "Portfile version : $CURRENT"
+          echo "Upstream version : $UPSTREAM"
+          if [[ "$CURRENT" == "$UPSTREAM" && "${{ github.event.inputs.force }}" != "true" ]]; then
+            echo "already_current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_current=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Exit early if Portfile is already current
+        if: steps.check.outputs.already_current == 'true'
+        run: echo "Portfile is already at ${{ steps.upstream.outputs.version }}. Nothing to do."
+
+      # ------------------------------------------------------------------ #
+      # 5. Download the source tarball and compute checksums               #
+      # ------------------------------------------------------------------ #
+      - name: Download source tarball and compute checksums
+        if: steps.check.outputs.already_current == 'false'
+        id: checksums
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          TAG="${{ steps.upstream.outputs.tag }}"
+          TARBALL_URL="https://github.com/kavehtehrani/cloudflare-speed-cli/archive/refs/tags/${TAG}.tar.gz"
+          TARBALL="/tmp/cloudflare-speed-cli-${VERSION}.tar.gz"
+
+          echo "Downloading $TARBALL_URL ..."
+          curl -fsSL -o "$TARBALL" "$TARBALL_URL"
+
+          SHA256=$(openssl dgst -sha256 -binary "$TARBALL" | xxd -p -c 256)
+          RMD160=$(openssl dgst -rmd160 -binary "$TARBALL" | xxd -p -c 256)
+          SIZE=$(wc -c < "$TARBALL" | tr -d ' ')
+
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "rmd160=$RMD160" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE"     >> "$GITHUB_OUTPUT"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA256  RMD160: $RMD160  SIZE: $SIZE"
+
+      # ------------------------------------------------------------------ #
+      # 6. Extract source and generate cargo.crates checksums block        #
+      # ------------------------------------------------------------------ #
+      - name: Install Rust toolchain
+        if: steps.check.outputs.already_current == 'false'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate cargo.crates block from Cargo.lock
+        if: steps.check.outputs.already_current == 'false'
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          TARBALL="${{ steps.checksums.outputs.tarball }}"
+
+          tar -xzf "$TARBALL" -C /tmp
+          SRC_DIR="/tmp/cloudflare-speed-cli-${VERSION}"
+
+          cd "$SRC_DIR"
+          cargo fetch --locked 2>/dev/null || cargo fetch
+
+          python3 "$GITHUB_WORKSPACE/source-repo/.github/scripts/gen_cargo_crates.py" \
+            "$SRC_DIR/Cargo.lock"
+
+          echo "cargo.crates block written to /tmp/cargo_crates.txt"
+          echo "First 5 lines:"
+          head -5 /tmp/cargo_crates.txt
+
+      # ------------------------------------------------------------------ #
+      # 7. Rewrite the Portfile                                             #
+      # ------------------------------------------------------------------ #
+      - name: Update Portfile
+        if: steps.check.outputs.already_current == 'false'
+        run: |
+          python3 "$GITHUB_WORKSPACE/source-repo/.github/scripts/update_portfile.py" \
+            "macports-ports/${{ vars.PORTFILE_PATH }}" \
+            "${{ steps.upstream.outputs.version }}" \
+            "${{ steps.checksums.outputs.sha256 }}" \
+            "${{ steps.checksums.outputs.rmd160 }}" \
+            "${{ steps.checksums.outputs.size }}"
+
+      # ------------------------------------------------------------------ #
+      # 8. Commit, push, and open a PR against your fork                   #
+      # ------------------------------------------------------------------ #
+      - name: Configure git identity
+        if: steps.check.outputs.already_current == 'false'
+        working-directory: macports-ports
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit Portfile changes and push branch
+        if: steps.check.outputs.already_current == 'false'
+        working-directory: macports-ports
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          BRANCH="update-cloudflare-speed-cli-${VERSION}"
+
+          git checkout -b "$BRANCH"
+          git add "${{ vars.PORTFILE_PATH }}"
+          git commit -m "net/cloudflare-speed-cli: update to ${VERSION}"
+          git push origin "$BRANCH"
+
+      - name: Open pull request against your fork
+        if: steps.check.outputs.already_current == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.MACPORTS_FORK_TOKEN }}
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          BRANCH="update-cloudflare-speed-cli-${VERSION}"
+          FORK="${{ vars.MACPORTS_FORK_REPO }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          gh pr create \
+            --repo "$FORK" \
+            --head "$BRANCH" \
+            --base master \
+            --title "net/cloudflare-speed-cli: update to ${VERSION}" \
+            --body "Automated Portfile update to version ${VERSION}.
+
+          Changes:
+          - \`github.setup\` version bumped to \`${VERSION}\`
+          - \`revision\` reset to \`0\`
+          - Source tarball checksums (\`rmd160\`, \`sha256\`, \`size\`) recalculated
+          - \`cargo.crates\` dependency checksums regenerated from \`Cargo.lock\`
+
+          Triggered by: ${RUN_URL}"
