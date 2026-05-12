@@ -22,10 +22,14 @@ name: Update MacPorts Portfile for cloudflare-speed-cli
 
 on:
   schedule:
-    # Run once a day at 06:00 UTC
+    # Run once a day at 10:00 UTC
     - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Release tag to target (e.g. v1.2.3). Leave blank to use the latest release."
+        required: false
+        default: ""
       force:
         description: "Force update even if version unchanged"
         required: false
@@ -47,19 +51,31 @@ jobs:
           path: source-repo
 
       # ------------------------------------------------------------------ #
-      # 2. Fetch the latest upstream release                                #
+      # 2. Fetch the target release (specific tag or latest)               #
       # ------------------------------------------------------------------ #
-      - name: Get latest cloudflare-speed-cli release
+      - name: Get target cloudflare-speed-cli release
         id: upstream
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_JSON=$(gh api repos/kavehtehrani/cloudflare-speed-cli/releases/latest)
+          INPUT_TAG="${{ github.event.inputs.release_tag }}"
+
+          if [[ -n "$INPUT_TAG" ]]; then
+            # Normalise: accept both "v1.2.3" and "1.2.3" from the user
+            TAG="${INPUT_TAG#v}"
+            TAG="v${TAG}"
+            echo "Using specified release tag: $TAG"
+            RELEASE_JSON=$(gh api "repos/kavehtehrani/cloudflare-speed-cli/releases/tags/${TAG}")
+          else
+            echo "No tag specified - fetching latest release"
+            RELEASE_JSON=$(gh api repos/kavehtehrani/cloudflare-speed-cli/releases/latest)
+          fi
+
           VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name' | sed 's/^v//')
           TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
-          echo "Upstream version: $VERSION (tag: $TAG)"
+          echo "Resolved version: $VERSION (tag: $TAG)"
 
       # ------------------------------------------------------------------ #
       # 3. Check out your macports-ports fork                               #
