@@ -194,28 +194,3 @@ jobs:
           git add "${{ vars.PORTFILE_PATH }}"
           git commit -m "net/cloudflare-speed-cli: update to ${VERSION}"
           git push origin "$BRANCH"
-
-      - name: Open pull request against your fork
-        if: steps.check.outputs.already_current == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.MACPORTS_FORK_TOKEN }}
-        run: |
-          VERSION="${{ steps.upstream.outputs.version }}"
-          BRANCH="update-cloudflare-speed-cli-${VERSION}"
-          FORK="${{ vars.MACPORTS_FORK_REPO }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          gh pr create \
-            --repo "$FORK" \
-            --head "$BRANCH" \
-            --base master \
-            --title "net/cloudflare-speed-cli: update to ${VERSION}" \
-            --body "Automated Portfile update to version ${VERSION}.
-
-          Changes:
-          - \`github.setup\` version bumped to \`${VERSION}\`
-          - \`revision\` reset to \`0\`
-          - Source tarball checksums (\`rmd160\`, \`sha256\`, \`size\`) recalculated
-          - \`cargo.crates\` dependency checksums regenerated from \`Cargo.lock\`
-
-          Triggered by: ${RUN_URL}"
