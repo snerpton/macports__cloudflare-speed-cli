@@ -2,17 +2,18 @@
 #
 # Polls for new cloudflare-speed-cli releases and opens a PR against your
 # macports-ports fork to update the Portfile when a new version is found.
+# Also creates a GitHub Release in this repo with a .zip of the Portfile
+# in the correct MacPorts directory structure for local testing.
 #
 # Required repository secrets:
-#   MACPORTS_FORK_TOKEN  – a GitHub PAT with `repo` scope on your
-#                          macports-ports fork (push branch + open PR).
+#   MACPORTS_FORK_TOKEN  - a GitHub PAT with `repo` scope on your
+#                          macports-ports fork (push branch only).
 #                           Requires:
-#                             - Contents — Read and write (to push the branch)
-#                             - Pull requests — Read and write (to open the PR)
+#                             - Contents - Read and write (to push the branch)
 #
-# Required repository variables (Settings → Variables → Actions):
-#   MACPORTS_FORK_REPO   – your fork, e.g. "snerpton/macports-ports"
-#   PORTFILE_PATH        – path inside the fork, e.g. "net/cloudflare-speed-cli/Portfile"
+# Required repository variables (Settings -> Variables -> Actions):
+#   MACPORTS_FORK_REPO   - your fork, e.g. "snerpton/macports-ports"
+#   PORTFILE_PATH        - path inside the fork, e.g. "net/cloudflare-speed-cli/Portfile"
 #
 # Companion scripts (must be committed alongside this file):
 #   .github/scripts/gen_cargo_crates.py
@@ -35,7 +36,7 @@ jobs:
   update-portfile:
     runs-on: ubuntu-latest
     permissions:
-      contents: read   # only reading this repo; writes go to the fork via PAT
+      contents: write  # needed to create tags and GitHub Releases in this repo
 
     steps:
       # ------------------------------------------------------------------ #
@@ -85,7 +86,7 @@ jobs:
           path: macports-ports
 
       # ------------------------------------------------------------------ #
-      # 4. Compare versions – skip if already up-to-date                   #
+      # 4. Compare versions - skip if already up-to-date                   #
       # ------------------------------------------------------------------ #
       - name: Check whether update is needed
         id: check
@@ -190,3 +191,58 @@ jobs:
           git add "${{ vars.PORTFILE_PATH }}"
           git commit -m "net/cloudflare-speed-cli: update to ${VERSION}"
           git push --force origin "$BRANCH"
+
+      # ------------------------------------------------------------------ #
+      # 9. Build the MacPorts directory structure and zip it up            #
+      # ------------------------------------------------------------------ #
+      - name: Build MacPorts directory structure zip
+        if: steps.check.outputs.already_current == 'false'
+        id: artifact
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          PORTFILE_PATH="${{ vars.PORTFILE_PATH }}"
+
+          # Reconstruct the MacPorts category/port directory layout
+          # e.g. PORTFILE_PATH = "net/cloudflare-speed-cli/Portfile"
+          #      -> stage/net/cloudflare-speed-cli/Portfile
+          STAGE_DIR="/tmp/macports-stage"
+          PORT_DIR="$STAGE_DIR/$(dirname "$PORTFILE_PATH")"
+          mkdir -p "$PORT_DIR"
+          cp "macports-ports/$PORTFILE_PATH" "$PORT_DIR/Portfile"
+
+          ZIP_NAME="cloudflare-speed-cli-portfile-${VERSION}.zip"
+          cd "$STAGE_DIR"
+          zip -r "/tmp/$ZIP_NAME" .
+
+          echo "zip=/tmp/$ZIP_NAME"   >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME"   >> "$GITHUB_OUTPUT"
+          echo "Built $ZIP_NAME"
+
+      # ------------------------------------------------------------------ #
+      # 10. Create a GitHub Release in this repo and attach the zip        #
+      # ------------------------------------------------------------------ #
+      - name: Create GitHub Release and upload zip
+        if: steps.check.outputs.already_current == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.upstream.outputs.version }}"
+          ZIP="${{ steps.artifact.outputs.zip }}"
+          ZIP_NAME="${{ steps.artifact.outputs.zip_name }}"
+          RELEASE_TAG="cloudflare-speed-cli-${VERSION}"
+          UPSTREAM_TAG="${{ steps.upstream.outputs.tag }}"
+          UPSTREAM_URL="https://github.com/kavehtehrani/cloudflare-speed-cli/releases/tag/${UPSTREAM_TAG}"
+
+          gh release create "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --title "MacPorts Portfile for cloudflare-speed-cli ${VERSION}" \
+            --notes "MacPorts Portfile update for [cloudflare-speed-cli ${VERSION}](${UPSTREAM_URL}).
+
+          ## Local testing
+
+          1. Download and unzip \`${ZIP_NAME}\`
+          2. Copy the resulting directory tree into your local MacPorts ports tree, or point \`port\` at it directly:
+             \`\`\`
+             sudo port install /path/to/net/cloudflare-speed-cli/Portfile
+             \`\`\`" \
+            "$ZIP"
