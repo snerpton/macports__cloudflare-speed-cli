@@ -182,6 +182,7 @@ jobs:
 
       - name: Commit Portfile changes and push branch
         if: steps.check.outputs.already_current == 'false'
+        id: push
         working-directory: macports-ports
         run: |
           VERSION="${{ steps.upstream.outputs.version }}"
@@ -196,7 +197,7 @@ jobs:
       # 9. Build the MacPorts directory structure and zip it up            #
       # ------------------------------------------------------------------ #
       - name: Build MacPorts directory structure zip
-        if: steps.check.outputs.already_current == 'false'
+        if: steps.check.outputs.already_current == 'false' && steps.push.conclusion == 'success'
         id: artifact
         run: |
           VERSION="${{ steps.upstream.outputs.version }}"
@@ -222,7 +223,7 @@ jobs:
       # 10. Create a GitHub Release in this repo and attach the zip        #
       # ------------------------------------------------------------------ #
       - name: Create GitHub Release and upload zip
-        if: steps.check.outputs.already_current == 'false'
+        if: steps.check.outputs.already_current == 'false' && steps.push.conclusion == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
