@@ -190,7 +190,7 @@ jobs:
 
           git checkout -b "$BRANCH"
           git add "${{ vars.PORTFILE_PATH }}"
-          git commit -m "net/cloudflare-speed-cli: update to ${VERSION}"
+          git commit -m "cloudflare-speed-cli: update to ${VERSION}"
           git push --force origin "$BRANCH"
 
       # ------------------------------------------------------------------ #
