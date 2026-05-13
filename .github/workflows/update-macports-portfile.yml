@@ -236,7 +236,7 @@ jobs:
 
           gh release create "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
-            --title "MacPorts Portfile for cloudflare-speed-cli ${VERSION}" \
+            --title "(${VERSION}) MacPorts Portfile for cloudflare-speed-cli ${VERSION}" \
             --notes "MacPorts Portfile update for [cloudflare-speed-cli ${VERSION}](${UPSTREAM_URL}).
 
           ## Local testing
