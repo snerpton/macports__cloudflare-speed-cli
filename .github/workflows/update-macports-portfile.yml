@@ -186,7 +186,7 @@ jobs:
         working-directory: macports-ports
         run: |
           VERSION="${{ steps.upstream.outputs.version }}"
-          BRANCH="update-cloudflare-speed-cli-${VERSION}"
+          BRANCH="update-port/cloudflare-speed-cli-${VERSION}"
 
           git checkout -b "$BRANCH"
           git add "${{ vars.PORTFILE_PATH }}"
