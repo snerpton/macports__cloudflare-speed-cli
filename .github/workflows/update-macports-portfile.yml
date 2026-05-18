@@ -22,9 +22,9 @@
 name: Update MacPorts Portfile for cloudflare-speed-cli
 
 on:
-  schedule:
-    # Run once a day at 10:00 UTC
-    - cron: "0 10 * * *"
+  #schedule:
+  #  # Run once a day at 10:00 UTC
+  #  - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
       release_tag:
