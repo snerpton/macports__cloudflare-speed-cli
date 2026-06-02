@@ -90,6 +90,8 @@ jobs:
       # ------------------------------------------------------------------ #
       - name: Check whether update is needed
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.MACPORTS_FORK_TOKEN }}
         run: |
           PORTFILE="macports-ports/${{ vars.PORTFILE_PATH }}"
           CURRENT=$(grep -E '^github\.setup\s' "$PORTFILE" | awk '{print $4}')
@@ -98,8 +100,20 @@ jobs:
           echo "Upstream version : $UPSTREAM"
           if [[ "$CURRENT" == "$UPSTREAM" ]]; then
             echo "already_current=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=Portfile is already at $UPSTREAM. Nothing to do." >> "$GITHUB_OUTPUT"
           else
-            echo "already_current=false" >> "$GITHUB_OUTPUT"
+            BRANCH="update-port/cloudflare-speed-cli-${UPSTREAM}"
+            echo "Checking for existing branch '$BRANCH' in fork..."
+            BRANCH_EXISTS=$(gh api \
+              "repos/${{ vars.MACPORTS_FORK_REPO }}/branches/${BRANCH}" \
+              --silent 2>&1 && echo "true" || echo "false")
+
+            if [[ "$BRANCH_EXISTS" == "true" ]]; then
+              echo "already_current=true" >> "$GITHUB_OUTPUT"
+              echo "skip_reason=Branch '$BRANCH' already exists in fork. Nothing to do." >> "$GITHUB_OUTPUT"
+            else
+              echo "already_current=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Exit early if Portfile is already current
