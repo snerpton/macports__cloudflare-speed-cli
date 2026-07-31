@@ -250,7 +250,7 @@ jobs:
 
           gh release create "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
-            --title "(${VERSION}) MacPorts Portfile for cloudflare-speed-cli ${VERSION}" \
+            --title "v${VERSION} MacPorts Portfile for cloudflare-speed-cli" \
             --notes "MacPorts Portfile update for [cloudflare-speed-cli ${VERSION}](${UPSTREAM_URL}).
 
           ## Local testing
@@ -258,6 +258,9 @@ jobs:
           1. Download and unzip \`${ZIP_NAME}\`
           2. Copy the resulting directory tree into your local MacPorts ports tree, or point \`port\` at it directly:
              \`\`\`
-             sudo port install /path/to/net/cloudflare-speed-cli/Portfile
+             cd /path/to/macports-local/
+             portindex
+             cd /path/to/net/cloudflare-speed-cli/
+             sudo port install
              \`\`\`" \
             "$ZIP"
