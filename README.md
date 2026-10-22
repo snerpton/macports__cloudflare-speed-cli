@@ -1,3 +1,7 @@
+[![CI](https://github.com/snerpton/macports__cloudflare-speed-cli/actions/workflows/update-macports-portfile.yml/badge.svg)](https://github.com/snerpton/macports__cloudflare-speed-cli/actions/workflows/update-macports-portfile.yml)
+[![MacPorts](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fports.macports.org%2Fapi%2Fv1%2Fports%2Fcloudflare-speed-cli%2F&query=%24.version&prefix=v&label=MacPorts&color=blue)](https://ports.macports.org/port/cloudflare-speed-cli/)
+
+
 # macports__cloudflare-speed-cli
 
 Automation for maintaining the [MacPorts](https://www.macports.org/) Portfile for [cloudflare-speed-cli](https://github.com/kavehtehrani/cloudflare-speed-cli), a Rust-based CLI tool for running internet speed tests via Cloudflare's speed test service.

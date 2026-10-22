@@ -1,5 +1,7 @@
 # .github/workflows/update-macports-portfile.yml
 #
+# Updates MacPorts Portfile for cloudflare-speed-cli
+#
 # Polls for new cloudflare-speed-cli releases and opens a PR against your
 # macports-ports fork to update the Portfile when a new version is found.
 # Also creates a GitHub Release in this repo with a .zip of the Portfile
@@ -19,7 +21,7 @@
 #   .github/scripts/gen_cargo_crates.py
 #   .github/scripts/update_portfile.py
 
-name: Update MacPorts Portfile for cloudflare-speed-cli
+name: Update Portfile
 
 on:
   #schedule:
